@@ -7,22 +7,6 @@ import java.io.*;
 import java.net.*;
 import java.util.List;
 
-/**
- * Servidor do Quiz Multiplayer - Entrega Parcial 1.
- *
- * Funcionalidades implementadas nesta etapa:
- *  - Carregamento das perguntas a partir de arquivo texto
- *  - Abertura do ServerSocket e escuta na porta definida
- *  - Aceitação de exatamente 2 conexões de clientes
- *  - Identificação de cada jogador (IDENTIFICACAO) via ObjectOutputStream
- *  - Exibição de log no console para cada evento de conexão
- *
- * Próximas etapas (Parciais 2 e 3):
- *  - Lógica completa de rodadas com buzzer e timer
- *  - Envio de perguntas e coleta de respostas
- *  - Controle de placar e fim de jogo
- *  - Interface gráfica no cliente (Java Swing)
- */
 public class Servidor {
 
     private static final int PORTA       = 12345;
@@ -39,10 +23,9 @@ public class Servidor {
         new Servidor().iniciar();
     }
 
-    /**
-     * Ponto de entrada do servidor.
-     * Carrega as perguntas e aguarda os jogadores conectarem.
-     */
+//     Ponto de entrada do servidor.
+//     Carrega as perguntas e aguarda os jogadores conectarem.
+     
     public void iniciar() throws Exception {
         String ip = InetAddress.getLocalHost().getHostAddress();
         System.out.println("=== SERVIDOR QUIZ - PARCIAL 1 ===");
@@ -57,10 +40,10 @@ public class Servidor {
 
     
     
-    /**
-     * Abre o ServerSocket e aceita exatamente 2 clientes.
-     * Cada cliente recebe sua identificação (jogador 0 ou 1).
-     */
+    
+//     Abre o ServerSocket e aceita exatamente 2 clientes.
+//     Cada cliente recebe sua identificação (jogador 0 ou 1).
+    
     private void aguardarJogadores() throws Exception {
         System.out.println("\nAguardando " + MAX_JOGADORES + " jogadores na porta " + PORTA + "...");
 
@@ -107,6 +90,8 @@ public class Servidor {
         }
     }
 
+    
+    
     
     
     
