@@ -12,7 +12,7 @@ public class Mensagem implements Serializable {
 
     public enum Tipo {
         // Servidor → Cliente
-        AGUARDANDO_JOGADOR,   // Esperando o 2º jogador conectar
+        AGUARDANDO_JOGADOR,   // Esperando o 2º jogador conectar / nova partida prestes a começar
         IDENTIFICACAO,        // Informa ao cliente seu número (0 ou 1)
         NOVA_PERGUNTA,        // Envia a pergunta + libera leitura (botão bloqueado)
         LIBERAR_BUZZER,       // 15s passaram, botão vermelho liberado
@@ -21,6 +21,7 @@ public class Mensagem implements Serializable {
         RESULTADO_RODADA,     // Correto/Errado + placar atualizado
         SEGUNDA_CHANCE,       // Jogador que errou: adversário pode tentar
         FIM_DE_JOGO,          // Partida encerrada
+        AGUARDANDO_REINICIO,  // Aguardando ambos confirmarem reinício
 
         // Cliente → Servidor
         CLICOU_BUZZER,        // Jogador apertou o botão vermelho
@@ -30,7 +31,7 @@ public class Mensagem implements Serializable {
     }
 
     private final Tipo tipo;
-    private Object dado; // payload flexível (Pergunta, Integer, String, Partida...)
+    private Object dado;
 
     public Mensagem(Tipo tipo) {
         this.tipo = tipo;

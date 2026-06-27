@@ -2,6 +2,7 @@ package quiz.rede;
 
 import quiz.modelo.*;
 import quiz.util.LeitorPerguntas;
+import quiz.util.HistoricoPartidas;
 
 import java.io.*;
 import java.net.*;
@@ -13,8 +14,8 @@ public class Servidor {
 
     private static final int PORTA          = 12345;
     private static final int MAX_JOGADORES  = 2;
-    private static final int TEMPO_LEITURA  = 15; // segundos antes de liberar buzzer
-    private static final int TEMPO_RESPOSTA = 20; // segundos para responder após clicar
+    private static final int TEMPO_LEITURA  = 15;
+    private static final int TEMPO_RESPOSTA = 20;
 
     // Canais de comunicação
     private final ObjectOutputStream[] outputs = new ObjectOutputStream[MAX_JOGADORES];
@@ -28,6 +29,9 @@ public class Servidor {
     private volatile AtomicInteger  respostaRecebida;
     private volatile CountDownLatch respostaLatch;
 
+    // Controle de reinício: aguarda ambos os jogadores confirmarem
+    private volatile CountDownLatch reinicioLatch;
+
     private List<Pergunta> perguntas;
     private Partida partida;
 
@@ -38,38 +42,99 @@ public class Servidor {
 
     public void iniciar() throws Exception {
         String ip = InetAddress.getLocalHost().getHostAddress();
-        System.out.println("=== SERVIDOR QUIZ - PARCIAL 2 ===");
+        System.out.println("=== SERVIDOR QUIZ ===");
         System.out.println("IP: " + ip + "  Porta: " + PORTA);
 
-        perguntas = LeitorPerguntas.carregar("recursos/perguntas.txt");
-        System.out.println("Perguntas carregadas: " + perguntas.size());
-
         aguardarJogadores();
+        iniciarThreadsDeEscuta();
+
+        // Loop principal: joga e reinicia enquanto os clientes quiserem
+        do {
+            perguntas = LeitorPerguntas.carregar("recursos/perguntas.txt");
+            System.out.println("Perguntas carregadas: " + perguntas.size());
+            perguntas = perguntas.subList(0, 3);
+            iniciarPartida();
+        } while (aguardarReinicio());
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     private void aguardarJogadores() throws Exception {
         System.out.println("\nAguardando " + MAX_JOGADORES + " jogadores na porta " + PORTA + "...");
 
-        try (ServerSocket servidor = new ServerSocket(PORTA)) {
+        ServerSocket servidor = new ServerSocket(PORTA);
 
-            for (int i = 0; i < MAX_JOGADORES; i++) {
-                Socket conexao = servidor.accept();
+        for (int i = 0; i < MAX_JOGADORES; i++) {
+            Socket conexao = servidor.accept();
 
-                outputs[i] = new ObjectOutputStream(conexao.getOutputStream());
-                outputs[i].flush();
-                inputs[i]  = new ObjectInputStream(conexao.getInputStream());
+            outputs[i] = new ObjectOutputStream(conexao.getOutputStream());
+            outputs[i].flush();
+            inputs[i]  = new ObjectInputStream(conexao.getInputStream());
 
-                enviar(i, new Mensagem(Mensagem.Tipo.IDENTIFICACAO, i));
-                System.out.println("Jogador " + (i + 1) + " conectado: "
-                        + conexao.getInetAddress().getHostAddress());
-            }
+            enviar(i, new Mensagem(Mensagem.Tipo.IDENTIFICACAO, i));
+            System.out.println("Jogador " + (i + 1) + " conectado: "
+                    + conexao.getInetAddress().getHostAddress());
+        }
 
-            System.out.println("\nAmbos conectados! Iniciando partida...");
-            broadcast(new Mensagem(Mensagem.Tipo.AGUARDANDO_JOGADOR,
-                    "Ambos conectados! Jogo iniciando..."));
+        servidor.close();
 
-            iniciarPartida();
+        System.out.println("\nAmbos conectados! Iniciando partida...");
+        broadcast(new Mensagem(Mensagem.Tipo.AGUARDANDO_JOGADOR,
+                "Ambos conectados! Jogo iniciando..."));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    /**
+     * Inicia threads permanentes de escuta para cada jogador.
+     * Além do buzzer e resposta, agora também captura REINICIAR.
+     */
+    private void iniciarThreadsDeEscuta() {
+        for (int i = 0; i < MAX_JOGADORES; i++) {
+            final int jogador = i;
+            Thread t = new Thread(() -> {
+                try {
+                    while (true) {
+                        Object obj = inputs[jogador].readObject();
+                        if (!(obj instanceof Mensagem)) continue;
+                        Mensagem m = (Mensagem) obj;
+
+                        switch (m.getTipo()) {
+                            case CLICOU_BUZZER:
+                                if (buzzerVencedor != null
+                                        && buzzerVencedor.compareAndSet(-1, jogador)) {
+                                    buzzerLatch.countDown();
+                                }
+                                break;
+
+                            case RESPOSTA:
+                                if (respostaRecebida != null) {
+                                    respostaRecebida.compareAndSet(
+                                            Integer.MIN_VALUE, (int) m.getDado());
+                                    respostaLatch.countDown();
+                                }
+                                break;
+
+                            case REINICIAR:
+                                System.out.println("  Jogador " + (jogador + 1)
+                                        + " quer reiniciar.");
+                                if (reinicioLatch != null) {
+                                    // Avisa quem clicou que está esperando o adversário
+                                    enviar(jogador, new Mensagem(Mensagem.Tipo.AGUARDANDO_REINICIO, null));
+                                    reinicioLatch.countDown();
+                                }
+                                break;
+
+                            default:
+                                break;
+                        }
+                    }
+                } catch (EOFException | SocketException e) {
+                    System.out.println("Jogador " + (jogador + 1) + " desconectou.");
+                } catch (Exception e) {
+                    System.err.println("Escuta J" + (jogador + 1) + ": " + e.getMessage());
+                }
+            }, "Escuta-J" + (i + 1));
+            t.setDaemon(true);
+            t.start();
         }
     }
 
@@ -86,35 +151,51 @@ public class Servidor {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    /**
+     * Aguarda ambos os jogadores enviarem REINICIAR.
+     * Envia AGUARDANDO_REINICIO para que o cliente que já clicou
+     * saiba que está esperando o adversário.
+     *
+     * @return true se ambos confirmaram; false se conexão caiu
+     */
+    private boolean aguardarReinicio() throws InterruptedException {
+        reinicioLatch = new CountDownLatch(MAX_JOGADORES);
+        System.out.println("\nAguardando jogadores para reiniciar...");
+
+        boolean ambosConfirmaram = reinicioLatch.await(5, TimeUnit.MINUTES);
+
+        if (ambosConfirmaram) {
+            System.out.println("Reiniciando partida!");
+            broadcast(new Mensagem(Mensagem.Tipo.AGUARDANDO_JOGADOR,
+                    "Ambos prontos! Nova partida iniciando..."));
+            sleep(1500);
+        }
+
+        return ambosConfirmaram;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     private void executarRodada(int indice) throws Exception {
         Pergunta pergunta = perguntas.get(indice);
 
         System.out.printf("%n── Rodada %d/%d: %s%n",
                 indice + 1, partida.getTotalRodadas(), pergunta.getEnunciado());
 
-        // Reseta controles de buzzer para esta rodada
+        // Reseta controles para esta rodada
         buzzerVencedor   = new AtomicInteger(-1);
         buzzerLatch      = new CountDownLatch(1);
         respostaRecebida = new AtomicInteger(Integer.MIN_VALUE);
         respostaLatch    = new CountDownLatch(1);
 
-        // Envia pergunta — cliente bloqueia o botão de buzzer
         broadcast(new Mensagem(Mensagem.Tipo.NOVA_PERGUNTA, pergunta));
 
-        // Threads de leitura paralela: ouvem CLICOU_BUZZER durante os 15s + 20s de espera
-        Thread[] leitores = iniciarLeitoresDeBuzzer();
-
-        // Pausa de leitura
         System.out.println("  Leitura: " + TEMPO_LEITURA + "s...");
         sleep(TEMPO_LEITURA * 1000L);
 
-        // Libera buzzer
         broadcast(new Mensagem(Mensagem.Tipo.LIBERAR_BUZZER, null));
         System.out.println("  Buzzer liberado! Aguardando clique...");
 
-        // Aguarda clique por até TEMPO_RESPOSTA segundos
         boolean alguemClicou = buzzerLatch.await(TEMPO_RESPOSTA, TimeUnit.SECONDS);
-        pararThreads(leitores);
 
         if (!alguemClicou) {
             System.out.println("  Ninguém clicou — rodada encerrada.");
@@ -127,26 +208,22 @@ public class Servidor {
         int adversario = 1 - clicante;
         System.out.println("  Jogador " + (clicante + 1) + " clicou primeiro!");
 
-        // Notifica ambos
         enviar(clicante,   new Mensagem(Mensagem.Tipo.VOCE_RESPONDEU, null));
         enviar(adversario, new Mensagem(Mensagem.Tipo.BUZZER_BLOQUEADO, null));
 
-        // Aguarda resposta do clicante
         respostaRecebida = new AtomicInteger(Integer.MIN_VALUE);
         respostaLatch    = new CountDownLatch(1);
 
-        boolean respondeu = aguardarResposta(clicante, TEMPO_RESPOSTA);
+        boolean respondeu = respostaLatch.await(TEMPO_RESPOSTA, TimeUnit.SECONDS);
         int resposta = respostaRecebida.get();
 
         if (!respondeu || resposta == Integer.MIN_VALUE) {
-            // Timeout sem resposta
             System.out.println("  J" + (clicante + 1) + " não respondeu → -1 ponto.");
             partida.removerPonto(clicante);
             broadcast(new Mensagem(Mensagem.Tipo.RESULTADO_RODADA,
                     new Object[]{clicante, false, true, clonarPartida(partida)}));
 
-            // Adversário recebe segunda chance, mas SEM risco (timeout não é erro do clicante)
-            executarSegundaChance(adversario, pergunta, /*semRisco=*/true);
+            executarSegundaChance(adversario, pergunta);
 
         } else if (pergunta.verificarResposta(resposta)) {
             System.out.println("  J" + (clicante + 1) + " ACERTOU! +1 ponto.");
@@ -160,28 +237,20 @@ public class Servidor {
             broadcast(new Mensagem(Mensagem.Tipo.RESULTADO_RODADA,
                     new Object[]{clicante, false, true, clonarPartida(partida)}));
 
-            // Adversário tenta — se errar, SEM penalidade (regra da segunda chance)
-            executarSegundaChance(adversario, pergunta, /*semRisco=*/true);
+            executarSegundaChance(adversario, pergunta);
         }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    /**
-     * Segunda chance para o adversário.
-     * @param semRisco  true → errar não desconta ponto
-     */
-    private void executarSegundaChance(int jogador, Pergunta pergunta, boolean semRisco)
-            throws Exception {
-
-        System.out.println("  Segunda chance: J" + (jogador + 1)
-                + (semRisco ? " (sem risco)" : "") + "...");
+    private void executarSegundaChance(int jogador, Pergunta pergunta) throws Exception {
+        System.out.println("  Segunda chance: J" + (jogador + 1) + " (sem risco)...");
 
         respostaRecebida = new AtomicInteger(Integer.MIN_VALUE);
         respostaLatch    = new CountDownLatch(1);
 
         enviar(jogador, new Mensagem(Mensagem.Tipo.SEGUNDA_CHANCE, pergunta));
 
-        boolean respondeu = aguardarResposta(jogador, TEMPO_RESPOSTA);
+        boolean respondeu = respostaLatch.await(TEMPO_RESPOSTA, TimeUnit.SECONDS);
         int resposta = respostaRecebida.get();
 
         if (!respondeu || resposta == Integer.MIN_VALUE) {
@@ -196,16 +265,14 @@ public class Servidor {
                     new Object[]{jogador, true, false, clonarPartida(partida)}));
 
         } else {
-            String penalidade = semRisco ? "sem penalidade" : "-1 ponto";
-            System.out.println("  J" + (jogador + 1) + " errou na segunda chance → " + penalidade + ".");
-            if (!semRisco) partida.removerPonto(jogador);
+            System.out.println("  J" + (jogador + 1) + " errou na segunda chance → sem penalidade.");
             broadcast(new Mensagem(Mensagem.Tipo.RESULTADO_RODADA,
-                    new Object[]{jogador, false, !semRisco, clonarPartida(partida)}));
+                    new Object[]{jogador, false, false, clonarPartida(partida)}));
         }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    private void encerrarJogo() throws Exception {
+    private void encerrarJogo() {
         int venc = partida.vencedor();
         String msg = venc == -1
                 ? "Empate! J1=" + partida.getPontos(0) + " J2=" + partida.getPontos(1)
@@ -214,74 +281,11 @@ public class Servidor {
 
         System.out.println("\n=== FIM DE JOGO === " + msg);
         broadcast(new Mensagem(Mensagem.Tipo.FIM_DE_JOGO, partida));
+        HistoricoPartidas.registrar(partida);
+        HistoricoPartidas.exibir();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Leitores paralelos de buzzer
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private Thread[] iniciarLeitoresDeBuzzer() {
-        Thread[] threads = new Thread[MAX_JOGADORES];
-        for (int i = 0; i < MAX_JOGADORES; i++) {
-            final int jogador = i;
-            threads[i] = new Thread(() -> {
-                try {
-                    while (!Thread.currentThread().isInterrupted()) {
-                        Object obj = inputs[jogador].readObject();
-                        if (!(obj instanceof Mensagem)) continue;
-                        Mensagem m = (Mensagem) obj;
-
-                        if (m.getTipo() == Mensagem.Tipo.CLICOU_BUZZER) {
-                            if (buzzerVencedor.compareAndSet(-1, jogador)) {
-                                buzzerLatch.countDown();
-                            }
-                        }
-                    }
-                } catch (EOFException | SocketException ignored) {
-                } catch (Exception e) {
-                    if (!Thread.currentThread().isInterrupted())
-                        System.err.println("  Leitor J" + (jogador + 1) + ": " + e.getMessage());
-                }
-            }, "BuzzerLeitor-J" + (i + 1));
-            threads[i].setDaemon(true);
-            threads[i].start();
-        }
-        return threads;
-    }
-
-    /**
-     * Aguarda RESPOSTA de um jogador específico com timeout.
-     */
-    private boolean aguardarResposta(int jogador, int timeoutSeg) throws InterruptedException {
-        Thread t = new Thread(() -> {
-            try {
-                while (!Thread.currentThread().isInterrupted()) {
-                    Object obj = inputs[jogador].readObject();
-                    if (!(obj instanceof Mensagem)) continue;
-                    Mensagem m = (Mensagem) obj;
-                    if (m.getTipo() == Mensagem.Tipo.RESPOSTA) {
-                        respostaRecebida.compareAndSet(Integer.MIN_VALUE, (int) m.getDado());
-                        respostaLatch.countDown();
-                        break;
-                    }
-                }
-            } catch (Exception e) {
-                // silencioso — encerra quando interrompido ou timeout
-            }
-        }, "RespostaLeitor-J" + (jogador + 1));
-        t.setDaemon(true);
-        t.start();
-
-        boolean recebeu = respostaLatch.await(timeoutSeg, TimeUnit.SECONDS);
-        t.interrupt();
-        return recebeu;
-    }
-
-    private void pararThreads(Thread[] threads) {
-        for (Thread t : threads) if (t != null) t.interrupt();
-    }
-
-
     private synchronized void enviar(int jogador, Mensagem m) {
         try {
             outputs[jogador].writeObject(m);
@@ -296,7 +300,6 @@ public class Servidor {
         for (int i = 0; i < MAX_JOGADORES; i++) enviar(i, m);
     }
 
-    /** Clona a Partida por serialização para evitar envio de referência mutável. */
     private Partida clonarPartida(Partida p) {
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
