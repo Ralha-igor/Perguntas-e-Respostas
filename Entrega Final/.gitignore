@@ -1,0 +1,27 @@
+# ── Compilados e distribuição ─────────────────────────────────────────────────
+build/
+dist/
+*.class
+*.jar
+
+# ── NetBeans ──────────────────────────────────────────────────────────────────
+nbproject/private/
+nbproject/build-impl.xml
+nbbuild/
+nbdist/
+
+# ── Arquivo de histórico gerado em tempo de execução ──────────────────────────
+recursos/historico.txt
+
+# ── Sistema operacional (Windows) ─────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+
+# ── Sistema operacional (Linux / Mac) ─────────────────────────────────────────
+.DS_Store
+*~
+
+# ── Logs e temporários ────────────────────────────────────────────────────────
+*.log
+*.tmp
+*.bak
