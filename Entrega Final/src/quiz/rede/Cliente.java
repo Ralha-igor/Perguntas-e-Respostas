@@ -12,16 +12,7 @@ import java.awt.*;
 import java.io.*;
 import java.net.*;
 
-/**
- * Cliente do Quiz Multiplayer com interface gráfica Java Swing.
- *
- * Melhorias da entrega final:
- *  - Nome customizável: jogador digita seu nome na tela de conexão
- *  - Resposta correta destacada em verde após cada rodada
- *  - Delay de 3s entre resultado e próxima pergunta
- *  - Timer visível também para quem perdeu o buzzer (BUZZER_BLOQUEADO)
- *  - Tela de espera exibe placar da partida anterior ao reiniciar
- */
+
 public class Cliente extends JFrame {
 
     // ── Rede ──────────────────────────────────────────────────────────────────

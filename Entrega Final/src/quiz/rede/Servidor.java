@@ -275,11 +275,7 @@ public class Servidor {
         sleep(DELAY_RODADA * 1000L);
     }
 
-    /**
-     * Retorna a função de alteração de pontos usada pelos EventoJogo.
-     * Polimorfismo: Servidor passa esse callback para qualquer subclasse
-     * de EventoJogo sem saber qual tipo concreto é.
-     */
+    
     private BiConsumer<Integer, Integer> fnPontos() {
         return (jogador, delta) -> {
             if (delta > 0) partida.adicionarPonto(jogador);

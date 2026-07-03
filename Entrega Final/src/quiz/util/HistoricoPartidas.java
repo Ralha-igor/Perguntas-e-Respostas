@@ -6,20 +6,14 @@ import java.io.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
-/**
- * Responsável pela escrita e leitura do histórico de partidas em arquivo texto.
- * Atende ao requisito: "Leitura e Escrita de Arquivos Texto".
- */
+
 public class HistoricoPartidas {
 
     private static final String CAMINHO = "recursos/historico.txt";
     private static final DateTimeFormatter FORMATO =
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
 
-    /**
-     * Registra o resultado de uma partida no arquivo de histórico.
-     * Utiliza FileWriter com append=true para acumular partidas sem sobrescrever.
-     */
+    
     public static void registrar(Partida partida) {
         try (FileWriter fw = new FileWriter(CAMINHO, true);
              BufferedWriter bw = new BufferedWriter(fw)) {

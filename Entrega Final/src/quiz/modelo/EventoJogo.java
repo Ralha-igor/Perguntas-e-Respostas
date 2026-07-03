@@ -3,15 +3,7 @@ package quiz.modelo;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-/**
- * Representa um evento ocorrido durante uma rodada do quiz.
- *
- * Demonstra os pilares de POO:
- *  - Abstração   : define a estrutura comum de qualquer evento de rodada
- *  - Herança     : subclasses especializam o comportamento
- *  - Polimorfismo: o Servidor chama evento.aplicar() sem saber qual tipo concreto é
- *  - Encapsulamento: dados protegidos com getters
- */
+
 public abstract class EventoJogo {
 
     protected final int jogador;
@@ -38,27 +30,12 @@ public abstract class EventoJogo {
     protected void removerPonto(int j)   { fnAlterarPonto.accept(j, -1); }
     protected void broadcast(Mensagem m) { fnBroadcast.accept(m); }
 
-    /**
-     * Payload enviado ao cliente com o resultado da rodada, sempre
-     * revelando a alternativa correta (uso normal: evento terminal,
-     * sem segunda chance pendente).
-     * [0] jogador respondente (-1 = ninguém)
-     * [1] acertou (boolean)
-     * [2] indiceCorreto (int) — cliente usa para destacar a alternativa certa
-     * [3] partida clonada com placar atualizado
-     */
+    
     protected Object[] payloadResultado(boolean acertou) {
         return payloadResultado(acertou, true);
     }
 
-    /**
-     * Variante que permite ocultar a alternativa correta.
-     * Usada quando a rodada ainda não terminou (ex.: haverá segunda
-     * chance) — nesse caso o índice correto NÃO deve ser revelado,
-     * senão o jogador da segunda chance veria a resposta antes de tentar.
-     *
-     * @param revelarCorreta se false, envia indiceCorreto = -1
-     */
+    
     protected Object[] payloadResultado(boolean acertou, boolean revelarCorreta) {
         int indiceParaEnviar = revelarCorreta ? indiceCorreto : -1;
         return new Object[]{jogador, acertou, indiceParaEnviar, clonar(partida)};
