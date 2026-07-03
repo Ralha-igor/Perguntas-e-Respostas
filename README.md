@@ -1,28 +1,101 @@
-# Questions & Answers — Quiz Multiplayer em Rede
+# 🎯 Questions & Answers — Quiz Multiplayer em Rede
 
-## Entrega Parcial 1
+Jogo de quiz multiplayer desenvolvido em Java com interface gráfica Swing, comunicação cliente-servidor via TCP e mecânica de buzzer competitivo.
 
-### O que foi implementado nesta entrega
-
-Esta primeira entrega estabelece a **base estrutural** do projeto:
-
-#### Pacote `quiz.modelo`
-- **`Pergunta.java`** — Representa uma pergunta com enunciado, 4 alternativas e índice da resposta correta. Implementa `Serializable` para trafegar pela rede.
-- **`Partida.java`** — Controla o estado da partida: pontuação dos jogadores, rodada atual e condição de fim de jogo.
-- **`Mensagem.java`** — Protocolo de comunicação entre Servidor e Cliente. Define o enum `Tipo` com todos os eventos do jogo (IDENTIFICACAO, NOVA_PERGUNTA, RESULTADO_RODADA, etc.).
-
-#### Pacote `quiz.util`
-- **`LeitorPerguntas.java`** — Leitura e parsing do arquivo `recursos/perguntas.txt`. Suporta comentários com `#`, separador `---` e embaralha as perguntas ao carregar.
-
-#### Pacote `quiz.rede`
-- **`Servidor.java`** — Abre o `ServerSocket` na porta 12345, aceita 2 clientes, configura os canais de I/O (`ObjectOutputStream` / `ObjectInputStream`) e envia a identificação de cada jogador.
-
-#### Arquivo de perguntas
-- **`recursos/perguntas.txt`** — 10 perguntas de cultura geral e programação no formato definido.
+Projeto acadêmico — Disciplina de Programação Orientada a Objetos  
+IFSP Campus Araraquara
 
 ---
 
-### Formato do arquivo de perguntas
+## 📋 Requisitos Atendidos
+
+| Requisito | Como foi implementado |
+|---|---|
+| Mín. 2 jogadores | `ServerSocket` aceita exatamente 2 clientes simultâneos |
+| Início e Reinício | Partida inicia automaticamente; reinício via confirmação dos dois jogadores |
+| Linguagem Java | 100% Java, sem dependências externas |
+| Encapsulamento | Atributos `private` com getters em todas as classes modelo |
+| Herança e Abstração | Classe abstrata `EventoJogo` com subclasses concretas |
+| Polimorfismo | Servidor chama `evento.aplicar()` sem saber o tipo concreto |
+| Threads e Rede | `ServerSocket`, `Socket`, `ObjectStream`, `CountDownLatch`, `AtomicInteger` |
+| Leitura de Arquivo | `LeitorPerguntas` lê `perguntas.txt` com `BufferedReader` |
+| Escrita de Arquivo | `HistoricoPartidas` grava `historico.txt` com `FileWriter` em modo append |
+| Interface Gráfica *(extra)* | Cliente com GUI completa em Java Swing |
+
+---
+
+## 🗂️ Estrutura do Projeto
+
+```
+src/
+└── quiz/
+    ├── modelo/
+    │   ├── Mensagem.java         # Protocolo de comunicação (enum Tipo + dado)
+    │   ├── Pergunta.java         # Enunciado, alternativas e índice correto
+    │   ├── PerguntaRodada.java   # Agrupa Pergunta + número da rodada atual
+    │   ├── Partida.java          # Estado da partida: pontos, rodada, nomes
+    │   ├── EventoJogo.java       # Classe abstrata base dos eventos de rodada
+    │   ├── EventoAcerto.java     # +1 ponto para quem acertou
+    │   ├── EventoErro.java       # Jogador erra → perde a vez (sem perda de ponto)
+    │   ├── EventoTimeout.java    # Jogador não responde → perde a vez
+    │   └── EventoSemResposta.java# Ninguém clicou / segunda chance perdida
+    ├── rede/
+    │   ├── Servidor.java         # Lógica principal do jogo e controle de rodadas
+    │   └── Cliente.java          # Interface gráfica Swing e comunicação com servidor
+    └── util/
+        ├── LeitorPerguntas.java  # Leitura e parsing do arquivo de perguntas
+        └── HistoricoPartidas.java# Escrita e leitura do histórico de partidas
+
+recursos/
+├── perguntas.txt                 # Banco de perguntas (formato próprio)
+└── historico.txt                 # Gerado automaticamente ao fim de cada partida
+```
+
+---
+
+## 🎮 Como Jogar
+
+### Pré-requisitos
+- Java 8 ou superior
+- NetBeans (recomendado) ou qualquer IDE Java
+
+### Executando
+
+**1. Inicie o Servidor**
+```
+Execute Servidor.java como classe principal
+O terminal exibirá o IP e a porta (12345)
+```
+
+**2. Inicie dois Clientes**
+```
+Execute Cliente.java duas vezes (instâncias separadas)
+Digite o IP do servidor e seu nome
+Clique em Conectar
+```
+
+**3. A partida começa automaticamente quando os dois se conectarem**
+
+---
+
+## 🕹️ Regras do Jogo
+
+```
+1.  Uma pergunta é exibida para os dois jogadores simultaneamente
+2.  Há 15 segundos para leitura — o buzzer fica bloqueado nesse período
+3.  Após os 15s, o buzzer fica vermelho e clicável
+4.  Quem clicar primeiro tem 20 segundos para escolher a alternativa
+5.  Se acertar       → +1 ponto, próxima pergunta
+6.  Se errar         → perde a vez, adversário tem uma segunda chance
+7.  Segunda chance   → sem risco de perder ponto se errar
+8.  Se não responder → perde a vez, adversário tem segunda chance
+9.  O jogo termina quando todas as perguntas forem apresentadas
+10. Vence quem tiver mais pontos ao final
+```
+
+---
+
+## 📁 Formato do Arquivo de Perguntas
 
 ```
 PERGUNTA: Qual é a capital do Brasil?
@@ -34,31 +107,82 @@ RESPOSTA: C
 ---
 ```
 
+- Linhas iniciadas com `#` são comentários e são ignoradas
+- O separador `---` delimita cada pergunta
+- As perguntas são embaralhadas a cada partida
+
 ---
 
-### Tecnologias e conceitos aplicados
+## 🏗️ Arquitetura
 
-| Conceito | Onde aplicado |
+### Comunicação Cliente-Servidor
+
+```
+Cliente                          Servidor
+   |                                |
+   |── NOME ("Igor") ──────────────>|
+   |                                |── aguarda 2 nomes
+   |<── NOMES_JOGADORES ────────────|
+   |<── NOVA_PERGUNTA ──────────────|
+   |                                |── aguarda 15s
+   |<── LIBERAR_BUZZER ─────────────|
+   |── CLICOU_BUZZER ──────────────>|
+   |<── VOCE_RESPONDEU ─────────────|
+   |── RESPOSTA (2) ───────────────>|
+   |<── RESULTADO_RODADA ───────────|
+   |         ...                    |
+   |<── FIM_DE_JOGO ────────────────|
+   |── REINICIAR ──────────────────>|
+   |<── AGUARDANDO_REINICIO ────────|
+```
+
+### Hierarquia de Eventos (POO)
+
+```
+EventoJogo  (abstrata)
+├── EventoAcerto       → adicionarPonto() + broadcast RESULTADO_RODADA
+├── EventoErro         → broadcast RESULTADO_RODADA (sem alteração de pontos)
+├── EventoTimeout      → broadcast RESULTADO_RODADA (sem alteração de pontos)
+└── EventoSemResposta  → broadcast RESULTADO_RODADA (sem alteração de pontos)
+```
+
+O `Servidor` chama `evento.aplicar()` via polimorfismo, sem conhecer o tipo concreto.
+Os callbacks de pontuação e broadcast são injetados via `BiConsumer` e `Consumer`.
+
+---
+
+## 📊 Histórico de Partidas
+
+Ao fim de cada partida, o servidor salva automaticamente em `recursos/historico.txt`:
+
+```
+========================================
+Data/Hora : 03/07/2026 14:32:10
+Rodadas   : 21
+Igor      : 5 ponto(s)
+Mario     : 3 ponto(s)
+Resultado : VENCEDOR: Igor
+```
+
+---
+
+## 🔧 Tecnologias e Conceitos
+
+- **Java SE** — linguagem principal
+- **Java Swing** — interface gráfica do cliente (`JFrame`, `CardLayout`, `GridBagLayout`)
+- **TCP/IP** — comunicação via `ServerSocket` / `Socket`
+- **Serialização** — objetos trafegam pela rede via `ObjectOutputStream` / `ObjectInputStream`
+- **Concorrência** — `Thread`, `CountDownLatch`, `AtomicInteger`, `volatile`
+- **I/O de Arquivo** — `BufferedReader`, `FileWriter`, `BufferedWriter`
+- **POO** — Encapsulamento, Herança, Polimorfismo e Abstração
+
+---
+
+## 📝 Entregas
+
+| Entrega | Conteúdo |
 |---|---|
-| Encapsulamento | Atributos `private` com getters em todas as classes modelo |
-| Serializable | `Pergunta`, `Partida`, `Mensagem` para tráfego via `ObjectStream` |
-| Threads e Rede | `ServerSocket`, `Socket`, `ObjectOutputStream/InputStream` |
-| Leitura de Arquivo | `BufferedReader` + `FileReader` em `LeitorPerguntas` |
-
----
-
-### Como executar (Parcial 1)
-
-1. Abrir o projeto no NetBeans
-2. Executar `Servidor.java` como classe principal
-3. O servidor ficará aguardando 2 conexões na porta **12345**
-
-> O cliente GUI e a lógica completa de rodadas serão implementados nas entregas seguintes.
-
----
-
-### Próximas entregas
-
-- **Parcial 2** — Lógica completa do servidor: rodadas, buzzer com timer de 15s, placar, segunda chance e reinício
-- **Parcial 3** — Cliente com interface gráfica Java Swing
-- **Final** — Projeto integrado, polido e documentado
+| Parcial 1 | Pacote `modelo`, `LeitorPerguntas`, `Servidor` base (aceita conexões) |
+| Parcial 2 | `Servidor` completo com buzzer, timer, placar, segunda chance e reinício |
+| Parcial 3 | `Cliente` com GUI Swing completa integrada |
+| Final | Hierarquia `EventoJogo`, nome customizável, histórico, placar visual, correções |
