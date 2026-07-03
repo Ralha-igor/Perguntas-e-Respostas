@@ -14,6 +14,8 @@ public class EventoErro extends EventoJogo {
 
     @Override
     public void aplicar() {
-        broadcast(new Mensagem(Mensagem.Tipo.RESULTADO_RODADA, payloadResultado(false)));
+        // O adversário ainda vai ter a segunda chance nesta rodada,
+        // então o índice correto NÃO pode ser revelado ainda.
+        broadcast(new Mensagem(Mensagem.Tipo.RESULTADO_RODADA, payloadResultado(false, false)));
     }
 }

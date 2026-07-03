@@ -54,7 +54,7 @@ public class Servidor {
         do {
             perguntas = LeitorPerguntas.carregar("recursos/perguntas.txt");
             System.out.println("Perguntas carregadas: " + perguntas.size());
-//            perguntas = perguntas.subList(0, 3);
+            perguntas = perguntas.subList(0, 3);
             iniciarPartida();
         } while (aguardarReinicio());
     }

@@ -39,14 +39,29 @@ public abstract class EventoJogo {
     protected void broadcast(Mensagem m) { fnBroadcast.accept(m); }
 
     /**
-     * Payload enviado ao cliente com o resultado da rodada.
+     * Payload enviado ao cliente com o resultado da rodada, sempre
+     * revelando a alternativa correta (uso normal: evento terminal,
+     * sem segunda chance pendente).
      * [0] jogador respondente (-1 = ninguém)
      * [1] acertou (boolean)
      * [2] indiceCorreto (int) — cliente usa para destacar a alternativa certa
      * [3] partida clonada com placar atualizado
      */
     protected Object[] payloadResultado(boolean acertou) {
-        return new Object[]{jogador, acertou, indiceCorreto, clonar(partida)};
+        return payloadResultado(acertou, true);
+    }
+
+    /**
+     * Variante que permite ocultar a alternativa correta.
+     * Usada quando a rodada ainda não terminou (ex.: haverá segunda
+     * chance) — nesse caso o índice correto NÃO deve ser revelado,
+     * senão o jogador da segunda chance veria a resposta antes de tentar.
+     *
+     * @param revelarCorreta se false, envia indiceCorreto = -1
+     */
+    protected Object[] payloadResultado(boolean acertou, boolean revelarCorreta) {
+        int indiceParaEnviar = revelarCorreta ? indiceCorreto : -1;
+        return new Object[]{jogador, acertou, indiceParaEnviar, clonar(partida)};
     }
 
     private Partida clonar(Partida p) {
